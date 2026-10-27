@@ -10,6 +10,24 @@ const OUA_GAMES = {
   }
 };
 
+// Helper: Converts yard line string (e.g., "QUE 35", "OPP 20") to percentage across 110-yard Canadian field
+function calculateBallPosition(downAndDistance) {
+  if (!downAndDistance) return 50;
+  
+  const match = downAndDistance.match(/(QUE|OPP|\b[A-Z]{2,4}\b)\s*(\d{1,2})/i);
+  if (!match) return 50;
+
+  const team = match[1].toUpperCase();
+  const yard = parseInt(match[2], 10);
+
+  // Queen's side (0% to 50%) vs Opponent side (50% to 100%)
+  if (team === 'QUE') {
+    return (yard / 110) * 100;
+  } else {
+    return ((110 - yard) / 110) * 100;
+  }
+}
+
 export default function App() {
   const [gameState, setGameState] = useState({
     homeScore: 0,
@@ -20,7 +38,6 @@ export default function App() {
     recentPlay: 'Game starting soon...'
   });
 
-  // Connection & Feed Health State
   const [isLive, setIsLive] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -30,7 +47,6 @@ export default function App() {
 
     const pollLiveStats = async () => {
       try {
-        // Route through Vercel API proxy to handle CORS
         const proxyUrl = `/api/stats?targetUrl=${encodeURIComponent(activeGame.liveFeedUrl)}`;
         const res = await fetch(proxyUrl);
 
@@ -38,7 +54,6 @@ export default function App() {
 
         const data = await res.json();
 
-        // Validate payload structure
         if (data && data.stats) {
           setGameState({
             homeScore: data.stats.home?.score || 0,
@@ -49,11 +64,9 @@ export default function App() {
             recentPlay: data.stats.lastPlay || ''
           });
 
-          // Mark connection as healthy
           setIsLive(true);
           setLastUpdated(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
         } else {
-          // Feed returned data but invalid format (e.g., pre-game empty state)
           setIsLive(false);
         }
       } catch (err) {
@@ -62,11 +75,12 @@ export default function App() {
       }
     };
 
-    // Run immediately on load, then poll every 15 seconds
     pollLiveStats();
     const interval = setInterval(pollLiveStats, 15000);
     return () => clearInterval(interval);
   }, []);
+
+  const ballPositionPercent = calculateBallPosition(gameState.downAndDistance);
 
   return (
     <div className="p-4 bg-gray-900 text-white min-h-screen">
@@ -77,7 +91,6 @@ export default function App() {
           <p className="text-xs text-gray-400">OUA Semifinal • Nov 7th</p>
         </div>
 
-        {/* Live vs Offline Status Badge */}
         <div className="flex flex-col items-end">
           <div
             className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase transition-colors duration-300 ${
@@ -108,7 +121,7 @@ export default function App() {
       </div>
 
       {/* Main Scorecard View */}
-      <div className="p-4 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+      <div className="p-4 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg mb-4">
         <div className="text-3xl font-extrabold tracking-tight">
           QUE {gameState.homeScore} - {gameState.awayScore} OPP
         </div>
@@ -118,12 +131,41 @@ export default function App() {
         <div className="text-md font-semibold mt-3 text-amber-300">
           {gameState.downAndDistance}
         </div>
-        <div className="mt-3 bg-gray-900/60 p-3 rounded-lg border border-gray-700/40">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Last Play</span>
-          <p className="text-xs text-gray-200 leading-relaxed">
-            {gameState.recentPlay}
-          </p>
+      </div>
+
+      {/* 2D Field Visualization */}
+      <div className="p-4 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg mb-4">
+        <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Field Position</h2>
+        <div className="relative w-full h-24 bg-emerald-700 rounded-lg border-2 border-white/20 overflow-hidden flex items-center">
+          {/* End Zones */}
+          <div className="w-[10%] h-full bg-blue-900/60 border-r border-white/40 flex items-center justify-center">
+            <span className="text-[10px] font-bold text-blue-200 -rotate-90">QUE</span>
+          </div>
+          <div className="flex-1 h-full relative border-r border-white/40 flex justify-between px-2">
+            <span className="text-[9px] text-white/40 self-end mb-1">20</span>
+            <span className="text-[9px] text-white/40 self-end mb-1">50</span>
+            <span className="text-[9px] text-white/40 self-end mb-1">20</span>
+          </div>
+          <div className="w-[10%] h-full bg-red-900/60 flex items-center justify-center">
+            <span className="text-[10px] font-bold text-red-200 rotate-90">OPP</span>
+          </div>
+
+          {/* Animated Football Marker */}
+          <div
+            className="absolute top-1/2 -translate-y-1/2 transition-all duration-700 ease-out"
+            style={{ left: `${ballPositionPercent}%` }}
+          >
+            <div className="w-4 h-4 bg-amber-400 border-2 border-amber-900 rounded-full shadow-md animate-pulse -translate-x-1/2" />
+          </div>
         </div>
+      </div>
+
+      {/* Recent Play Feed */}
+      <div className="p-4 bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg">
+        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Last Play</span>
+        <p className="text-xs text-gray-200 leading-relaxed">
+          {gameState.recentPlay}
+        </p>
       </div>
     </div>
   );
